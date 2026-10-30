@@ -10,9 +10,8 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Final
 
-from packaging.version import InvalidVersion, Version
-
 import requests
+from packaging.version import InvalidVersion, Version
 
 from kicad_lib_manager.services.user_paths import user_cache_dir
 
@@ -111,7 +110,11 @@ class PyPIVersionChecker:
             return cached.version
 
         headers = {"User-Agent": self.user_agent}
-        if cached is not None and cached.etag is not None:
+        if (
+            cached is not None
+            and cached.etag is not None
+            and _is_valid_version(cached.version)
+        ):
             headers["If-None-Match"] = cached.etag
         try:
             response = requests.get(
@@ -129,8 +132,7 @@ class PyPIVersionChecker:
     def _read_response(
         response: requests.Response, cached: CachedVersion | None
     ) -> CachedVersion | None:
-        """Turn a PyPI answer into a cache entry; None when it holds none
-        that is a PEP 440 version.
+        """Turn a PyPI answer into a cache entry; None without a PEP 440 version.
 
         Raises:
             ValueError: The body is not JSON.

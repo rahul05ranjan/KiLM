@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner, Result
 
-import kicad_lib_manager.main as main
+from kicad_lib_manager import main
 from kicad_lib_manager.commands.update import check, info, perform
 from kicad_lib_manager.commands.update.command import update_app
 from kicad_lib_manager.main import app
@@ -236,8 +236,9 @@ class TestStartupUpdateCheck:
         monkeypatch.setattr(main, "UpdateService", fake.service)
         return fake
 
+    @pytest.mark.usefixtures("home")
     def test_up_to_date_check_is_recorded(
-        self, startup: FakeInstallation, home: Path
+        self, startup: FakeInstallation
     ) -> None:
         """A due check is recorded whether or not it found an update."""
         startup.latest = "1.0.0"
@@ -287,7 +288,7 @@ class TestPyPIVersionValidation:
         monkeypatch.setattr(
             pypi_version.requests,
             "get",
-            lambda *args, **kwargs: SimpleNamespace(
+            lambda *_args, **_kwargs: SimpleNamespace(
                 status_code=200,
                 headers={},
                 json=lambda: {"info": {"version": "not a version"}},
@@ -308,7 +309,7 @@ class TestPyPIVersionValidation:
         )
         urls: list[str] = []
 
-        def fake_get(url: str, **kwargs: object) -> SimpleNamespace:
+        def fake_get(url: str, **_kwargs: object) -> SimpleNamespace:
             urls.append(url)
             return SimpleNamespace(
                 status_code=200,
@@ -330,7 +331,7 @@ class TestPyPIVersionValidation:
             json.dumps({"version": "1.1.0", "etag": None, "timestamp": time.time()})
         )
 
-        def unexpected_get(*args: object, **kwargs: object) -> SimpleNamespace:
+        def unexpected_get(*_args: object, **_kwargs: object) -> SimpleNamespace:
             message = "a fresh valid cache must be answered without a request"
             raise AssertionError(message)
 
@@ -347,9 +348,13 @@ class TestPyPIVersionValidation:
             json.dumps({"version": "not a version", "etag": "e", "timestamp": 0})
         )
 
-        def fake_get(url: str, **kwargs: object) -> SimpleNamespace:
+        sent_headers: dict[str, object] = {}
+
+        def fake_get(_url: str, **_kwargs: object) -> SimpleNamespace:
+            sent_headers.update(_kwargs.get("headers", {}))
             return SimpleNamespace(status_code=304, headers={})
 
         monkeypatch.setattr(pypi_version.requests, "get", fake_get)
         checker = PyPIVersionChecker("kilm", cache_file=cache)
         assert checker.check_latest_version(use_cache=False) is None
+        assert "If-None-Match" not in sent_headers
